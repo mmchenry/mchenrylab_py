@@ -94,7 +94,12 @@ def findROI(vid_path, fr_num=1):
 
     # Get frame and select roi
     im0 = getFrame(vid_path,fr_num)
-    r = cv.selectROI(im0)
+
+    # Create named window
+    cv.namedWindow("ROI_Select",cv.WINDOW_NORMAL)
+
+    # Select ROI
+    r = cv.selectROI("ROI_Select",im0)
     cv.destroyAllWindows()
 
     return r
