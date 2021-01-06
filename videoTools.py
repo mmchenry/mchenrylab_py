@@ -118,7 +118,7 @@ def findROI(vid_path, fr_num=1):
 
 def getbackground(vid_path, out_path, max_frames):
     """Computes background of video and outputs as png"""
-    # Open video, check if it exists
+    # Create video capture object, check if video exists
     cap = cv.VideoCapture(vid_path)
     if not cap.isOpened():
         sys.exit(
@@ -131,10 +131,26 @@ def getbackground(vid_path, out_path, max_frames):
     ret, frame_init = cap.read()
 
     # Resize dimensions (for image preview only)
-    resize_dim = (int(frame_init.shape[1] // 2), int(frame_init.shape[0] // 2))
+    resize_dim = (int(frame_init.shape[1] // 3), int(frame_init.shape[0] // 3))
+
+    # Video duration (in frames)
+    frame_count = int(cap.get(cv.CAP_PROP_FRAME_COUNT))
 
     # Set max index for background model
-    ind_max = max_frames
+    if frame_count >= max_frames:
+        ind_max = max_frames
+    else:
+        ind_max = frame_count
+
+    # Create window for viewing current output frame
+    cv.namedWindow("bg Model", cv.WINDOW_NORMAL)
+
+    # Text and parameters for frame number overlay
+    font = cv.FONT_HERSHEY_SIMPLEX
+    text_pos = (400, 100)
+    font_scale = 2
+    font_color = (155, 155, 155)
+    font_thickness = 2
 
     while True:
         # Capture frame-by-frame
@@ -153,33 +169,46 @@ def getbackground(vid_path, out_path, max_frames):
             # Get background image
             bgImage = bgmodel.getBackgroundImage()
 
+            # Copy background image and add text for showing progress
+            bg_copy = bgImage.copy()
+            cv.putText(bg_copy, 'Frame: ' + str(frame_curr),
+                       text_pos,
+                       font,
+                       font_scale,
+                       font_color,
+                       font_thickness, cv.LINE_AA)
+
             # Show background model progress
-            cv.imshow('bg Model', cv.resize(bgImage, resize_dim))
+            cv.imshow("bg Model", cv.resize(bg_copy, resize_dim))
+            cv.waitKey(20)
 
             # Close window and break loop with 'esc' key
-            k = cv.waitKey(30) & 0xff
+            k = cv.waitKey(20) & 0xff
             if k == 27:
                 break
 
         # Save background image and Break while loop after max frames
         if frame_curr >= ind_max:
             # Write background image
-            cv.imwrite(out_path + 'bgImage.png', bgImage)
+            cv.imwrite(out_path, bgImage)
             break
 
-        # When everything done, release the capture
-        cap.release()
-        cv.destroyAllWindows()
-        cv.waitKey(1)
+    print('Background image complete')
 
-        return bgImage
+    # When everything done, release the capture
+    cap.release()
+    cv.waitKey(0)
+    cv.destroyAllWindows()
+    cv.waitKey(1)
+    cv.waitKey(1)
 
-    # TODO: fix issue with closing windows after executing routine
+    return bgImage
+
 
 def bgsubtract(vid_path, out_path, r):
     """Perform background subtraction and image smoothing to video"""
 
-# TODO: Check output of finfROI and use this to generate mask
+    # TODO: Check output of findROI and use this to generate mask to complete this routine
     # Open video, check if it exists
     cap = cv.VideoCapture(vid_path)
     if not cap.isOpened():
