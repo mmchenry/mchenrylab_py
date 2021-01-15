@@ -93,7 +93,7 @@ def convertCropped(vid_path, out_path, r, imQuality=0.75):
     os.system(command)
 
 
-def findROI(vid_path, fr_num=1):
+def findROI(vid_path, fr_num=1, show_crosshair=True, from_center=True):
     """Reads frame of video and prompts to interactively select a roi"""
     # Define video object &  video frame
     vid = cv.VideoCapture(vid_path)
@@ -106,7 +106,7 @@ def findROI(vid_path, fr_num=1):
     cv.startWindowThread()
 
     # Select ROI
-    r = cv.selectROI("ROI_Select", im0)
+    r = cv.selectROI("ROI_Select", im0, show_crosshair, from_center)
 
     # Release video capture and close window
     vid.release()
@@ -205,10 +205,9 @@ def getbackground(vid_path, out_path, max_frames):
     return bgImage
 
 
-def bgsubtract(vid_path, out_path, r):
+def bgsubtract(vid_path, out_path, roi):
     """Perform background subtraction and image smoothing to video"""
 
-    # TODO: Check output of findROI and use this to generate mask to complete this routine
     # Open video, check if it exists
     cap = cv.VideoCapture(vid_path)
     if not cap.isOpened():
@@ -216,16 +215,34 @@ def bgsubtract(vid_path, out_path, r):
             'Video cannot be read! Please check vid_path to ensure it is correctly pointing to the video file')
 
     # Set codec for output video
-    codec = 'mp4v'
+    # codec = 'mp4v'
+    codec = 'MJPG'
+
+    # Open background image
+    bgImg = cv.imread(out_path + '-bgImg.png')
+
+    # Check if background image was loaded
+    if bgImg is None:
+        sys.exit("Could not read the image. Pathname incorrect OR needs to run getbackground")
+
+    # Convert background image to grayscale
+    bg_gray = cv.cvtColor(bgImg.copy(), cv.COLOR_BGR2GRAY)
+
+    x1 = roi[0]
+    y1 = roi[1]
+    x2 = roi[2]
+    y2 = roi[3]
+
+    out_vid_path = out_path + '-bgSub.mp4'
 
     # Output frame size set by mask radius, which will be used for cropping video
-    output_framesize = (mask_radius * 2, mask_radius * 2)
+    output_framesize = (int(y2), int(x2))
 
-    # Video writer class to output video with preprocessing
+    # Video writer class to output video with pre-processing
     fourcc = cv.VideoWriter_fourcc(*codec)
 
     # Create video output object
-    out = cv.VideoWriter(filename=out_path, fourcc=fourcc, fps=30.0, frameSize=output_framesize, isColor=False)
+    out = cv.VideoWriter(filename=out_vid_path, fourcc=fourcc, fps=30.0, frameSize=output_framesize, isColor=False)
 
     # Create a CLAHE object for histogram equalization
     clahe = cv.createCLAHE(clipLimit=6.0, tileGridSize=(61, 61))
@@ -248,30 +265,22 @@ def bgsubtract(vid_path, out_path, r):
             frame = cv.cvtColor(frame, cv.COLOR_BGR2GRAY)
 
             # Take complement of background
-            bg_inv = cv.bitwise_not(bgImage)
+            bg_inv = cv.bitwise_not(bg_gray)
 
             # Background subtraction (by adding inverse of background)
             frame_sub = cv.add(frame, bg_inv)
 
-            # Apply mask to current frame with background subtraction
-            frame_sub[mask == 0] = 0
-
-            # Apply histogram equalization to masked image
+            # Apply histogram equalization to background subtracted image
             frame_adjust = clahe.apply(frame_sub)
 
             # Apply smoothing filter
             frame_adjust = cv.bilateralFilter(frame_adjust, 5, 40, 40)
 
-            # cv2.imshow('Background Subtract', cv2.resize(frame_adjust, resize_dim))
-            # k = cv2.waitKey(30) & 0xff
-            # if k == 27:
-            #     break
-
             # Crop image
-            frame_crop = frame_adjust[crop_y[0]:crop_y[1], crop_x[0]:crop_x[1]].copy()
+            frame_crop = frame_adjust[int(y1):int(y1 + y2), int(x1):int(x1 + x2)]
 
             # Write current processed frame to output object
-            # out.write(frame_crop)
+            out.write(frame_crop)
 
             # Display output image (bgSubtract + processed + cropped)
             cv.imshow('frame_curr', frame_crop)
@@ -283,10 +292,14 @@ def bgsubtract(vid_path, out_path, r):
 
         last = this_frame
 
+    print("Background subtraction complete")
+
     # When everything done, release the capture
     cap.release()
     out.release()
+    cv.waitKey(0)
     cv.destroyAllWindows()
+    cv.waitKey(1)
     cv.waitKey(1)
 
 # def convertGIF(vid_path,out_path)
