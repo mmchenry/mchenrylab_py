@@ -6,6 +6,7 @@
 import cv2 as cv  # openCV for interacting with video
 import os
 import sys
+import pathlib
 
 
 def getFrame(vid_path, fr_num=1):
@@ -28,6 +29,26 @@ def getFrame(vid_path, fr_num=1):
         _, frame = vid.read()
 
         return frame
+
+def vidFromSeq(frame_start, imQuality=0.75, prefix="DSC", num_dig=5, suffix="JPG"):
+    """Creates a movie in parent directory from an image sequence in current directory
+       frame_start - Frame number to begin
+       imQuality - image quality (0 - 1)
+       prefix - Text that the image filenames begin with
+       num_dig - Number of digits in image filenames
+    """
+    # p is a path object for current directory
+    p = pathlib.Path().absolute() 
+
+    # Define output as file with name of current directory
+    out_path = str(p.parent) + os.path.sep + str(p.parts[-1]) + ".mp4" 
+
+    # Quality value, on the 51-point scale used by ffmpeg
+    qVal = 51 * (1 - imQuality)
+
+    # Define and run command at terminal
+    command = f"ffmpeg -start_number {frame_start}  -i DSC%05d.{suffix} -an -crf {qVal}  '{out_path}'"
+    os.system(command)
 
 
 def convertWhole(vid_path, out_path, imQuality=0.75):
