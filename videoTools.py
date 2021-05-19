@@ -1,5 +1,5 @@
 """
-    Requires ffmpeg and opencv
+    Series of functions for manipulating and interacting with video. Requires installing ffmpeg and opencv.
 """
 
 # Imports
@@ -7,6 +7,9 @@ import cv2 as cv  # openCV for interacting with video
 import os
 import sys
 import pathlib
+import numpy as np
+from numpy import inf
+import matplotlib.pyplot as plt
 
 
 def getFrame(vid_path, fr_num=1):
@@ -30,6 +33,7 @@ def getFrame(vid_path, fr_num=1):
 
         return frame
 
+
 def vidFromSeq(frame_start, imQuality=0.75, prefix="DSC", num_dig=5, suffix="JPG"):
     """Creates a movie in parent directory from an image sequence in current directory
        frame_start - Frame number to begin
@@ -37,6 +41,7 @@ def vidFromSeq(frame_start, imQuality=0.75, prefix="DSC", num_dig=5, suffix="JPG
        prefix - Text that the image filenames begin with
        num_dig - Number of digits in image filenames
     """
+    print("test2")
     # p is a path object for current directory
     p = pathlib.Path().absolute() 
 
@@ -47,7 +52,7 @@ def vidFromSeq(frame_start, imQuality=0.75, prefix="DSC", num_dig=5, suffix="JPG
     qVal = 51 * (1 - imQuality)
 
     # Define and run command at terminal
-    command = f"ffmpeg -start_number {frame_start}  -i DSC%05d.{suffix} -an -crf {qVal}  '{out_path}'"
+    command = f"ffmpeg -start_number {frame_start}  -i DSC%05d.{suffix} -an -r 15 -crf {qVal}  '{out_path}'"
     os.system(command)
 
 
@@ -95,7 +100,7 @@ def trimDurCropped(vid_path, out_path, r, tEnd, tStart="00:00:00", imQuality=0.7
 
 
 def convertCropped(vid_path, out_path, r, imQuality=0.75):
-    """Converts a movie (cropped) into a grayscale and slightly mp4.
+    """Converts a movie (cropped) into a grayscale and compressed mp4.
        imQuality - image quality (0 - 1)
        out_path - full path of video file, with .mp4 extension
        r - rectangle that specifies the roi
@@ -112,6 +117,82 @@ def convertCropped(vid_path, out_path, r, imQuality=0.75):
     # Run command
     # subprocess.call(command, shell=True)
     os.system(command)
+
+def maskMovie(vid_path, out_path, coord_top, coord_bot):
+
+    # Check for file existance
+    if not os.path.isfile(vid_path):
+        raise Exception("Video file does not exist")
+
+    # Define input video object
+    vid = cv.VideoCapture(vid_path)
+
+    # Video writer class to output video with pre-processing
+    fourcc = cv.VideoWriter_fourcc(*'MP4V')    
+    # fourcc = cv.VideoWriter_fourcc(*'DIVX')
+    # fourcc = cv.VideoWriter_fourcc(*'MJPG')
+    # fourcc = cv.VideoWriter_fourcc(*'XVID')
+    # fourcc = cv.VideoWriter_fourcc('M','J','P','G')
+    # fourcc = cv.VideoWriter_fourcc(*'mpv4')  
+
+    # Video duration (in frames), frame rate, and frame numbers
+    frame_count = int(vid.get(cv.CAP_PROP_FRAME_COUNT))
+    fps         = vid.get(cv.cv2.CAP_PROP_FPS)
+    frNums      = list(range(frame_count))
+    # frNums = list(range(5))
+
+    # Get first frame, define mask
+    im0 = getFrame(vid_path, 1)
+
+    # Extract image dimensions
+    h, w, d = im0.shape
+
+    # Create video output object
+    out = cv.VideoWriter(out_path,fourcc, fps, (int(w),int(h)))
+
+    # Loop thru frames
+    for frNum in frNums:
+
+        # Read current frame
+        im0 = getFrame(vid_path, frNum)
+        # ret, im0 = vid.read()
+
+        # Blank mask image
+        imMask = np.zeros(im0.shape, np.uint8)
+
+        # Make shape from points for lower mask
+        pts_bot = np.array([[coord_bot]],np.int32)
+        cv.fillPoly(imMask,pts_bot,(255,255,255))
+
+        # Make shape from points for upper mask
+        pts_top = np.array([[coord_top]],np.int32)
+        cv.fillPoly(imMask,pts_top,(255,255,255))
+
+        # Apply mask to image
+        im0 = cv.bitwise_or(im0,imMask)
+
+        # Visual check
+        # plt.imshow(im0)
+        # plt.show()
+
+        # Write current processed frame to output object
+        out.write(im0)
+
+        print("Completed frame " + str(frNum) + " out of " + str(frame_count))
+
+
+    # Clean up
+    vid.release()
+    out.release()
+
+    # Closes all the frames
+    cv.destroyAllWindows()
+
+    # Report conclusion
+    print(" ")
+    print("Masked movie created:")
+    print("    " + out_path)
+    print(" ")
 
 
 def findROI(vid_path, fr_num=1, show_crosshair=True, from_center=True):
@@ -135,6 +216,87 @@ def findROI(vid_path, fr_num=1, show_crosshair=True, from_center=True):
     cv.destroyAllWindows()
 
     return r
+
+
+def findCoord(vid_path, poly_overlay=False, num_pts=inf, fr_num=1):
+    """Reads frame of video and prompts to interactively select coordinates"""
+
+    # get access to a couple of global variables we'll need
+    global coords, drawing
+
+    # Initialize container for coordinates
+    coords = []
+
+    # Define video object &  video frame
+    vid = cv.VideoCapture(vid_path)
+
+    # Get frame
+    im0 = getFrame(vid_path, fr_num)
+
+    # Create named window
+    cv.namedWindow("Coord_Select", cv.WINDOW_GUI_EXPANDED)
+    cv.startWindowThread()
+
+    # Select coordinates
+    cv.setMouseCallback('Coord_Select', clickCoords, im0)
+
+    # Loop for collecting coordinates/keyboard inputs
+    while 1==1:
+        cv.imshow("Coord_Select",im0)
+        k = cv.waitKey(20) & 0xFF
+        if k == 27:
+            break
+        elif len(coords)==num_pts:
+            break
+
+    # Release video capture and close window
+    vid.release()
+    cv.waitKey(1)
+    cv.destroyAllWindows()
+
+    if poly_overlay:
+        # Overlay points on video
+        cv.imshow("Coord_Display", cv.WINDOW_NORMAL)
+        cv.startWindowThread()
+
+        # Construct polgon
+        polygon = [np.int32(coords)]
+        im0 = cv.polylines(im0, polygon, False, (0, 255, 0), thickness=2)
+
+        # Interactive mode
+        while True:
+            cv.imshow("Coord_Display",im0)
+            k = cv.waitKey(20) & 0xFF
+            if k == 27:
+                break
+
+        # Release video capture and close window
+        vid.release()
+        cv.waitKey(1)
+        cv.destroyAllWindows()
+    
+
+    return coords
+
+
+def clickCoords(event, x, y, flag, image):
+    """
+    Callback function, called by OpenCV when the user interacts
+    with the window using the mouse. This function will be called
+    repeatedly as the user interacts.
+    """
+    # get access to a couple of global variables we'll need
+    global coords, drawing
+
+    if event == cv.EVENT_LBUTTONDOWN:
+        # user has clicked the mouse's left button
+        drawing = True
+
+        # Marker at the selected coordinates
+        cv.circle(image,(x,y),3,(0,255,0),-1)
+
+        # Add coordinates
+        coords.append((x, y))
 
 
 def getbackground(vid_path, out_path, max_frames):
@@ -231,6 +393,7 @@ def bgsubtract(vid_path, out_path, roi):
 
     # Open video, check if it exists
     cap = cv.VideoCapture(vid_path)
+
     if not cap.isOpened():
         sys.exit(
             'Video cannot be read! Please check vid_path to ensure it is correctly pointing to the video file')
@@ -323,7 +486,4 @@ def bgsubtract(vid_path, out_path, roi):
     cv.waitKey(1)
     cv.waitKey(1)
 
-# def convertGIF(vid_path,out_path)
-# TODO: Implement these lines to export gifs
-# ffmpeg -i input_vid.mp4 -filter_complex "[0:v] palettegen" palette.png
-# ffmpeg -i input_vid.mp4 -i palette.png -filter_complex "[0:v][1:v] paletteuse,scale=640:-1,fps=15" output_vid.gif
+
